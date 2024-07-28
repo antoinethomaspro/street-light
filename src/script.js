@@ -16,6 +16,10 @@ import { BlendFunction, EffectComposer, EffectPass, RenderPass, SelectiveBloomEf
 // Debug
 const gui = new GUI()
 
+if (import.meta.env.MODE === "production") {
+    gui.destroy();
+}
+
 // Canvas
 const canvas = document.querySelector('canvas.webgl')
 
@@ -70,15 +74,15 @@ let spotLightHelper;
 // Create the spotlight
 spotLight = new THREE.SpotLight(0xffffff, 0, 10, Math.PI * 0.3, 0.1, 1); // Initially off
 spotLight.castShadow = true;
-spotLight.position.set(2, 2.5, 0.7);
+spotLight.position.set(2, 2.4, 1.3);
 spotLight.target.position.x = 2.0;
-spotLight.target.position.z = 1.0;
+spotLight.target.position.z = 2.0;
 scene.add(spotLight.target);
 scene.add(spotLight);
 
 // Create spotlight helper
 spotLightHelper = new THREE.SpotLightHelper(spotLight);
-scene.add(spotLightHelper);
+// scene.add(spotLightHelper);
 
 // Load the model
 loadModel().then((gltf) => {
@@ -86,7 +90,7 @@ loadModel().then((gltf) => {
 
     const rootnode = gltf.scene.children[0];
     rootnode.scale.set(0.45, 0.45, 0.45);
-    rootnode.position.set(2, 0, 0);
+    rootnode.position.set(2, 0, 0.7);
     rootnode.castShadow = true;
 
     // Recursively set castShadow for all children
@@ -101,28 +105,19 @@ loadModel().then((gltf) => {
 
     // Find StreetLight_2 mesh
     const streetLight2 = rootnode.getObjectByName('StreetLight_2');
+
+    const originalMaterial = streetLight2.material;
+    const newMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    streetLight2.material = newMaterial;
+    selectiveBloomEffect.selection.add(streetLight2);
+    spotLight.intensity = 4.5;
+
     if (streetLight2) {
-        const originalMaterial = streetLight2.material;
-        const newMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-        // GUI setup
-        const params = {
-            material: 'original'
-        };
-        gui.add(params, 'material', ['original', 'new']).onChange((value) => {
-            if (value === 'original') {
-                streetLight2.material = originalMaterial;
-                selectiveBloomEffect.selection.delete(streetLight2);
-            } else {
-                streetLight2.material = newMaterial;
-                selectiveBloomEffect.selection.add(streetLight2);
-            }
-        });
-
         // Function to handle the click event
         function onDocumentMouseClick(event) {
             event.preventDefault();
-            
+
             // Calculate mouse position in normalized device coordinates (-1 to +1) for both components.
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -143,11 +138,13 @@ loadModel().then((gltf) => {
                     streetLight2.material = newMaterial;
                     selectiveBloomEffect.selection.add(streetLight2);
                     spotLight.intensity = 4.5;
+                    plane.material = planeMaterialOff;
                 } else {
                     // Otherwise, turn both off
                     streetLight2.material = originalMaterial;
                     selectiveBloomEffect.selection.delete(streetLight2);
                     spotLight.intensity = 0;
+                    plane.material = planeMaterialOn;
                 }
 
                 spotLightHelper.update(); // Update the helper to reflect changes
@@ -175,7 +172,7 @@ gltfLoader.load(
         const rootnode = gltf.scene.children[0]
         rootnode.scale.set(2, 2, 2)
         rootnode.rotateY(Math.PI * 0.5)
-        rootnode.position.set(0, 0.5, 1)
+        rootnode.position.set(0.5, 0.5, 0.7)
         rootnode.castShadow = true
 
         // Recursively set castShadow for all children
@@ -217,14 +214,14 @@ gltfLoader.load(
         geometry.applyMatrix4(matrix);
 
         // Create an InstancedMesh with a larger number of instances
-        const count = 9; // Number of instances, for example, 9 to fill a 3x3 grid
+        const count = 4; // Number of instances, for example, 9 to fill a 3x3 grid
         const instancedMesh = new THREE.InstancedMesh(geometry, floor.material, count);
         instancedMesh.receiveShadow = true;
 
         // Set the transformation for each instance
         const dummy = new THREE.Object3D(); // Helper object to set the transformation matrix
 
-        const instancesPerRow = 3; // Number of instances per row
+        const instancesPerRow = 2; // Number of instances per row
 
         for (let i = 0; i < count; i++) {
             const x = (i % instancesPerRow) * 2; // Calculate x position
@@ -241,6 +238,7 @@ gltfLoader.load(
         }
 
         scene.add(instancedMesh);
+        // scene.add(rootnode)
 
 
         gui.add(floor.material, 'wireframe')
@@ -263,51 +261,76 @@ material.roughness = 0.7
 
 // Function to create a texture from text
 function createTextTexture(text, width, height) {
+    const borderThickness = 30
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext('2d');
 
-    context.fillStyle = 'white'; // Background color
+    // Draw the white background
+    context.fillStyle = 'white';
     context.fillRect(0, 0, width, height);
 
-    context.font = '128px Arial'; // Font settings
+    // Set font and text alignment
+    context.font = '100px Arial';
     context.fillStyle = 'black'; // Text color
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillText(text, width / 2, height / 2);
 
+    // Get the image data from the canvas
+    const imageData = context.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    // Invert the colors
+    for (let i = 0; i < data.length; i += 4) {
+        data[i] = 255 - data[i];       // Red
+        data[i + 1] = 255 - data[i + 1]; // Green
+        data[i + 2] = 255 - data[i + 2]; // Blue
+        // Alpha channel remains unchanged
+    }
+
+    // Put the image data back to the canvas
+    context.putImageData(imageData, 0, 0);
+
+    // Draw the white border
+    context.lineWidth = borderThickness;
+    context.strokeStyle = 'white';
+    context.strokeRect(0, 0, width, height);
+
+    // Create a texture from the canvas
     const texture = new THREE.CanvasTexture(canvas);
     return texture;
 }
 
 // Create the plane with text texture
-const planeWidth = 2;
-const planeHeight = 1;
-const textTexture = createTextTexture('Click Me', 512, 256);
+const planeWidth = 1;
+const planeHeight = 0.5;
+const textTexture = createTextTexture('Light On', 512, 256);
+const textureLightOff = createTextTexture('Light Off', 512, 256);
 
-const planeMaterial = new THREE.MeshBasicMaterial({ map: textTexture });
+const planeMaterialOn = new THREE.MeshStandardMaterial({
+    map: textTexture,
+    alphaMap: textTexture,
+    transparent: true
+});
+
+const planeMaterialOff = new THREE.MeshStandardMaterial({
+    map: textureLightOff,
+    alphaMap: textureLightOff,
+    transparent: true
+});
+
 const planeGeometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+const plane = new THREE.Mesh(planeGeometry, planeMaterialOff);
 plane.position.set(0, 0, 0);
 plane.receiveShadow = true;
 
 plane.rotation.x = - Math.PI * 0.5
-plane.position.x = 4
+plane.position.x = 1
 plane.position.y = 0.18
-plane.position.z = 3
+plane.position.z = 2
 scene.add(plane);
-
-
-const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 32, 32),
-    material
-)
-sphere.castShadow = true
-
-
-sphere.position.set(2, 0.5, 2)
-scene.add( sphere)
 
 
 
@@ -338,23 +361,30 @@ const rgbeLoader = new RGBELoader()
 
 let dayEnvironmentMap, nightEnvironmentMap;
 
+// Load night HDR
+rgbeLoader.load('./environmentMaps/night.hdr', (environmentMap) => {
+    environmentMap.mapping = THREE.EquirectangularReflectionMapping;
+    nightEnvironmentMap = environmentMap;
+
+    scene.background = nightEnvironmentMap;
+    scene.environment = nightEnvironmentMap;
+    scene.environmentIntensity = 0.1
+    scene.backgroundIntensity = 0.1
+
+});
+
 // Load day HDR
 rgbeLoader.load('./environmentMaps/day.hdr', (environmentMap) => {
     environmentMap.mapping = THREE.EquirectangularReflectionMapping;
     dayEnvironmentMap = environmentMap;
     // Set the initial environment
-    scene.background = dayEnvironmentMap;
-    scene.environment = dayEnvironmentMap;
+
 });
 
-// Load night HDR
-rgbeLoader.load('./environmentMaps/night.hdr', (environmentMap) => {
-    environmentMap.mapping = THREE.EquirectangularReflectionMapping;
-    nightEnvironmentMap = environmentMap;
-});
+
 
 const params1 = {
-    environment: 'day'
+    environment: 'night'
 };
 
 gui.add(params1, 'environment', ['day', 'night']).onChange((value) => {
@@ -397,7 +427,7 @@ scene.add(camera)
 
 // Controls
 const controls = new OrbitControls(camera, canvas)
-controls.target.set(0, 0.75, 0)
+controls.target.set(1, 0.75, 1)
 controls.enableDamping = true
 
 /**
@@ -440,7 +470,15 @@ composer.addPass(effectPassTone);
  * Mouse events
  */
 
+/**
+ * Axis helper
+ */
 
+//adding axis helper
+const axesHelper = new THREE.AxesHelper(1);
+axesHelper.material.depthTest = false;
+
+scene.add(axesHelper)
 
 window.addEventListener('resize', () => {
     // Update sizes
