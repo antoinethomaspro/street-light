@@ -478,7 +478,9 @@ composer.addPass(effectPassTone);
 const axesHelper = new THREE.AxesHelper(1);
 axesHelper.material.depthTest = false;
 
-scene.add(axesHelper)
+if (import.meta.env.MODE === "development") {
+    scene.add(axesHelper)
+}
 
 window.addEventListener('resize', () => {
     // Update sizes
